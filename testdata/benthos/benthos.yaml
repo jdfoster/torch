@@ -1,0 +1,16 @@
+http:
+  enabled: true
+
+input:
+  http_server:
+    path: /ingest
+    allowed_verbs:
+      - POST
+    timeout: 5s
+
+pipeline:
+  processors:
+    - bloblang: root = content()
+
+output:
+  stdout: {}
