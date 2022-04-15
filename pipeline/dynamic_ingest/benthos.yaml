@@ -1,0 +1,16 @@
+http:
+  enabled: true
+
+input:
+  dynamic:
+    inputs: {}
+
+# output:
+#   redis_streams:
+#     url: ${REDIS_URI}
+#     stream: ${REDIS_STREAM_NAME:ingest}
+#     max_length: ${REDIS_STREAM_LEN:4000}
+
+output:
+  stdout:
+    codec: lines

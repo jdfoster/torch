@@ -1,0 +1,40 @@
+http:
+  enabled: true
+
+input:
+  generate:
+    mapping: "root = {}"
+    interval: 15m
+    count: 2
+
+  processors:
+    - branch:
+        processors:
+          - cache:
+              resource: redis_cache
+              operator: get
+              key: "wiki_recentchange_since"
+
+          - catch:
+              - bloblang: root = timestamp_unix() - 120
+
+        result_map: 'root.since = this'
+
+    - bloblang: |
+        root = {}
+        root.http_client.verb = "GET"
+        root.http_client.url = "https://stream.wikimedia.org/v2/stream/recentchange?since=%s".format((this.since).string())
+        root.http_client.headers = { "Accept": "application/json" }
+        root.http_client.stream = { "enabled": true, "reconnect": false, "codec": "lines" }
+
+output:
+  http_client:
+    url: ${DYNAMIC_INGEST_URL}/inputs/wiki-scraper
+    verb: POST
+    headers:
+      Content-Type: application/json
+
+cache_resources:
+  - label: redis_cache
+    redis:
+      url: ${REDIS_URI}
