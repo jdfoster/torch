@@ -59,8 +59,9 @@ type benthos struct {
 	Hostname, Port, URI string
 }
 
-func setupBenthos(ctx context.Context, confPath string, env map[string]string) (*benthos, error) {
+func setupBenthos(ctx context.Context, name, confPath string, env map[string]string) (*benthos, error) {
 	req := tc.ContainerRequest{
+		Name:         name,
 		Image:        "jeffail/benthos",
 		ExposedPorts: []string{"4195/tcp"},
 		Mounts: tc.ContainerMounts{

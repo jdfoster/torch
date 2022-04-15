@@ -16,9 +16,16 @@ input:
               key: "wiki_recentchange_since"
 
           - catch:
+              - log:
+                  level: INFO
+                  message: 'Last event timestamp does not exist, using start point 2 minutes in past.'
               - bloblang: root = timestamp_unix() - 120
 
-        result_map: 'root.since = this'
+        result_map: "root.since = this"
+
+    - log:
+        level: INFO
+        message: 'Generating request using since timesamp value ${! json("since") }'
 
     - bloblang: |
         root = {}

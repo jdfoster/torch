@@ -1,0 +1,38 @@
+http:
+  enabled: true
+
+input:
+  redis_streams:
+    url: ${REDIS_URI}
+    streams:
+      - ${REDIS_STREAM_NAME:ingest_stream}
+    consumer_group: ${REDIS_STREAM_CONSUMER_GROUP:ingest_consumer_group}
+    client_id: cache_last_event
+    start_from_oldest: false
+
+buffer:
+  system_window:
+    size: 30s
+
+pipeline:
+  processors:
+    - log:
+        level: INFO
+        message: 'System window buffer has ${! batch_size() } items for 30 second window ending at ${! meta("window_end_timestamp") }.'
+
+    - bloblang: |
+        root = if batch_index() == batch_size() - 1 {
+          this.timestamp
+        } else {
+          deleted()
+        }
+
+output:
+  cache:
+    target: redis_cache
+    key: "wiki_recentchange_since"
+
+cache_resources:
+  - label: redis_cache
+    redis:
+      url: ${REDIS_URI}

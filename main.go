@@ -28,16 +28,9 @@ func setup(ctx context.Context) (stop func(context.Context), err error) {
 		// terminate any created containers on error
 		if err != nil {
 			stop(ctx)
-			t = []terminator{}
 			err = fmt.Errorf("failed to setup containers: %w", err)
 		}
 	}()
-
-	r, err := setupRedis(ctx)
-	if err != nil {
-		return
-	}
-	t = append(t, r.Container)
 
 	wd, err := os.Getwd()
 	if err != nil {
@@ -45,12 +38,29 @@ func setup(ctx context.Context) (stop func(context.Context), err error) {
 	}
 	dir := path.Join(wd, "pipeline")
 
-	b, err := setupBenthos(ctx, path.Join(dir, "dynamic_ingest"), map[string]string{"REDIS_URI": r.URI})
+	r, err := setupRedis(ctx)
 	if err != nil {
 		return
 	}
+	t = append(t, r.Container)
 
-	_, err = setupBenthos(ctx, path.Join(dir, "wiki_scraper"), map[string]string{"REDIS_URI": r.URI, "DYNAMIC_INGEST_URL": b.URI })
+	b, err := setupBenthos(ctx, "dynamic_ingest", path.Join(dir, "dynamic_ingest"), map[string]string{"REDIS_URI": r.URI})
+	if err != nil {
+		return
+	}
+	t = append(t, b.Container)
+
+	w, err := setupBenthos(ctx, "wiki_scraper", path.Join(dir, "wiki_scraper"), map[string]string{"REDIS_URI": r.URI, "DYNAMIC_INGEST_URL": b.URI})
+	if err != nil {
+		return
+	}
+	t = append(t, w.Container)
+
+	c, err := setupBenthos(ctx, "cache_last_event", path.Join(dir, "cache_last_event"), map[string]string{"REDIS_URI": r.URI})
+	if err != nil {
+		return
+	}
+	t = append(t, c.Container)
 
 	return
 }
