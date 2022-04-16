@@ -9,12 +9,12 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-type redis struct {
+type container struct {
 	tc.Container
 	Hostname, Port, URI string
 }
 
-func setupRedis(ctx context.Context) (*redis, error) {
+func newRedisContainer(ctx context.Context) (*container, error) {
 	req := tc.ContainerRequest{
 		Image:        "redis",
 		ExposedPorts: []string{"6379/tcp"},
@@ -44,7 +44,7 @@ func setupRedis(ctx context.Context) (*redis, error) {
 		return nil, fmt.Errorf("setupRedis, failed to extract container port: %w", err)
 	}
 
-	r := &redis{
+	r := &container{
 		Container: c,
 		Hostname:  h,
 		Port:      p.Port(),
@@ -54,24 +54,24 @@ func setupRedis(ctx context.Context) (*redis, error) {
 	return r, nil
 }
 
-type benthos struct {
-	tc.Container
-	Hostname, Port, URI string
+type benthosRequest struct {
+	name, confPath string
+	env            map[string]string
 }
 
-func setupBenthos(ctx context.Context, name, confPath string, env map[string]string) (*benthos, error) {
+func newBenthosContainer(ctx context.Context, params benthosRequest) (*container, error) {
 	req := tc.ContainerRequest{
-		Name:         name,
+		Name:         params.name,
 		Image:        "jeffail/benthos",
 		ExposedPorts: []string{"4195/tcp"},
 		Mounts: tc.ContainerMounts{
 			{
-				Source:   tc.GenericBindMountSource{HostPath: confPath},
+				Source:   tc.GenericBindMountSource{HostPath: params.confPath},
 				Target:   "/opt/benthos",
 				ReadOnly: true,
 			},
 		},
-		Env:        env,
+		Env:        params.env,
 		WaitingFor: wait.ForHTTP("/ready").WithPort("4195").WithStartupTimeout(10 * time.Second),
 		Cmd:        []string{"-c", "/opt/benthos/benthos.yaml"},
 	}
@@ -98,7 +98,7 @@ func setupBenthos(ctx context.Context, name, confPath string, env map[string]str
 		return nil, fmt.Errorf("setupBenthos, failed to extract container port: %w", err)
 	}
 
-	b := &benthos{
+	b := &container{
 		Container: c,
 		Hostname:  h,
 		Port:      p.Port(),

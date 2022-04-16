@@ -36,7 +36,7 @@ input:
 
 output:
   http_client:
-    url: ${DYNAMIC_INGEST_URL}/inputs/wiki-scraper
+    url: ${DYNAMIC_INGEST_URI}/inputs/wiki-scraper
     verb: POST
     headers:
       Content-Type: application/json

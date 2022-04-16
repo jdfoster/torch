@@ -9,15 +9,11 @@ import (
 	"time"
 )
 
-type terminator interface {
-	Terminate(context.Context) error
-}
-
-func setup(ctx context.Context) (stop func(context.Context), err error) {
+func setup(ctx context.Context, pipelinePath string) (stop func(context.Context), err error) {
 	ctx, cancel := context.WithTimeout(ctx, time.Minute*4)
 	defer cancel()
 
-	var t []terminator
+	var t []container
 	stop = func(ctx context.Context) {
 		for _, c := range t {
 			c.Terminate(ctx)
@@ -32,35 +28,64 @@ func setup(ctx context.Context) (stop func(context.Context), err error) {
 		}
 	}()
 
-	wd, err := os.Getwd()
+	r, err := newRedisContainer(ctx)
 	if err != nil {
 		return
 	}
-	dir := path.Join(wd, "pipeline")
+	t = append(t, *r)
 
-	r, err := setupRedis(ctx)
-	if err != nil {
-		return
-	}
-	t = append(t, r.Container)
+	ep := map[string]string{"REDIS_URI": r.URI}
 
-	b, err := setupBenthos(ctx, "dynamic_ingest", path.Join(dir, "dynamic_ingest"), map[string]string{"REDIS_URI": r.URI})
-	if err != nil {
-		return
+	bc := []struct {
+		name, confPath, provides string
+		requires                 []string
+	}{
+		{
+			name:     "dynamic_ingest",
+			confPath: path.Join(pipelinePath, "dynamic_ingest"),
+			provides: "DYNAMIC_INGEST_URI",
+			requires: []string{"REDIS_URI"},
+		},
+		{
+			name:     "wiki_scraper",
+			confPath: path.Join(pipelinePath, "wiki_scraper"),
+			provides: "WIKI_SCRAPER_URI",
+			requires: []string{"REDIS_URI", "DYNAMIC_INGEST_URI"},
+		},
+		{
+			name:     "cache_last_event",
+			confPath: path.Join(pipelinePath, "cache_last_event"),
+			provides: "CACHE_LAST_EVENT_URI",
+			requires: []string{"REDIS_URI"},
+		},
 	}
-	t = append(t, b.Container)
 
-	w, err := setupBenthos(ctx, "wiki_scraper", path.Join(dir, "wiki_scraper"), map[string]string{"REDIS_URI": r.URI, "DYNAMIC_INGEST_URL": b.URI})
-	if err != nil {
-		return
-	}
-	t = append(t, w.Container)
+	var c *container
+	for _, b := range bc {
+		env := make(map[string]string)
+		for _, r := range b.requires {
+			e, ok := ep[r]
+			if !ok {
+				err = fmt.Errorf("missing endpoint: %q", r)
+				return
+			}
+			env[r] = e
+		}
 
-	c, err := setupBenthos(ctx, "cache_last_event", path.Join(dir, "cache_last_event"), map[string]string{"REDIS_URI": r.URI})
-	if err != nil {
-		return
+		req := benthosRequest{
+			name:     b.name,
+			confPath: b.confPath,
+			env:      env,
+		}
+
+		c, err = newBenthosContainer(ctx, req)
+		if err != nil {
+			return
+		}
+
+		ep[b.provides] = c.URI
+		t = append(t, *c)
 	}
-	t = append(t, c.Container)
 
 	return
 }
@@ -69,7 +94,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	cancel, err := setup(ctx)
+	wd, err := os.Getwd()
+	if err != nil {
+		return
+	}
+	dir := path.Join(wd, "pipeline")
+
+	cancel, err := setup(ctx, dir)
 	if err != nil {
 		fmt.Println(err.Error())
 		return
